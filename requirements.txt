@@ -1,4 +1,4 @@
-telethon
-cloudinary
-firebase-admin
-python-dotenv
+telethon==1.41.2
+firebase-admin==7.1.0
+cloudinary==1.44.1
+python-dotenv==1.0.1
