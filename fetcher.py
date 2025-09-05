@@ -1,5 +1,6 @@
 import os
 import json
+import asyncio
 from telethon import TelegramClient, events
 from telethon.sessions import StringSession
 import firebase_admin
@@ -7,15 +8,14 @@ from firebase_admin import credentials, db
 import cloudinary
 import cloudinary.uploader
 from dotenv import load_dotenv
-import asyncio
 
-# Load environment variables
+# Load .env if running locally
 load_dotenv()
 
 # --- Telegram API ---
 API_ID = int(os.getenv("API_ID"))
 API_HASH = os.getenv("API_HASH")
-SESSION_STRING = os.getenv("SESSION_STRING")  # 👈 Your generated session string
+SESSION_STRING = os.getenv("SESSION_STRING")  # 👈 Must be set in Render ENV vars
 
 # --- Cloudinary ---
 CLOUDINARY_CLOUD_NAME = os.getenv("CLOUDINARY_CLOUD_NAME")
@@ -40,10 +40,10 @@ cloudinary.config(
     api_secret=CLOUDINARY_API_SECRET
 )
 
-# ✅ Use StringSession (no OTP prompt)
+# ✅ Use StringSession (No OTP prompt)
 client = TelegramClient(StringSession(SESSION_STRING), API_ID, API_HASH)
 
-# Telegram channel(s) to listen
+# Telegram channels to monitor
 CHANNELS = ["Shopping_deal_offerss"]
 
 @client.on(events.NewMessage(chats=CHANNELS))
@@ -51,14 +51,14 @@ async def handler(event):
     text = event.message.message or ""
     image_url = None
 
-    # Upload image if post has photo
+    # If message has image, upload to Cloudinary
     if event.message.photo:
         file_path = await client.download_media(event.message.photo)
         upload_result = cloudinary.uploader.upload(file_path)
         image_url = upload_result.get("secure_url")
         os.remove(file_path)
 
-    # Save post to Firebase Realtime Database
+    # Save message to Firebase
     ref = db.reference("products")
     ref.push({
         "text": text,
@@ -71,14 +71,11 @@ async def handler(event):
 
 async def main():
     print("🚀 Telegram Fetcher Started with StringSession...")
-
-    # Properly await connect()
     await client.connect()
 
     if not await client.is_user_authorized():
-        raise Exception("❌ Session string is invalid or expired. Please regenerate it.")
+        raise Exception("❌ Session string invalid or expired. Generate a new one.")
 
-    # Block until disconnected
     await client.run_until_disconnected()
 
 
