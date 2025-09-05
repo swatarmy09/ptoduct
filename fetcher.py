@@ -7,6 +7,7 @@ from firebase_admin import credentials, db
 import cloudinary
 import cloudinary.uploader
 from dotenv import load_dotenv
+import asyncio
 
 # Load environment variables
 load_dotenv()
@@ -68,12 +69,18 @@ async def handler(event):
     print(f"✅ Saved: {text[:50]}... {image_url}")
 
 
-if __name__ == "__main__":
+async def main():
     print("🚀 Telegram Fetcher Started with StringSession...")
-    # ✅ DO NOT use client.start() → use connect instead
-    client.connect()
 
-    if not client.is_user_authorized():
+    # Properly await connect()
+    await client.connect()
+
+    if not await client.is_user_authorized():
         raise Exception("❌ Session string is invalid or expired. Please regenerate it.")
 
-    client.run_until_disconnected()
+    # Block until disconnected
+    await client.run_until_disconnected()
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
