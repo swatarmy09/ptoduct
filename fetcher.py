@@ -39,7 +39,7 @@ cloudinary.config(
     api_secret=CLOUDINARY_API_SECRET
 )
 
-# ✅ Use StringSession so no phone/OTP prompt
+# ✅ Use StringSession (no OTP prompt)
 client = TelegramClient(StringSession(SESSION_STRING), API_ID, API_HASH)
 
 # Telegram channel(s) to listen
@@ -67,7 +67,13 @@ async def handler(event):
 
     print(f"✅ Saved: {text[:50]}... {image_url}")
 
+
 if __name__ == "__main__":
     print("🚀 Telegram Fetcher Started with StringSession...")
-    client.start()  # ✅ No OTP needed now
+    # ✅ DO NOT use client.start() → use connect instead
+    client.connect()
+
+    if not client.is_user_authorized():
+        raise Exception("❌ Session string is invalid or expired. Please regenerate it.")
+
     client.run_until_disconnected()
