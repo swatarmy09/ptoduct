@@ -1,7 +1,7 @@
 import os
 import json
-import asyncio
 from telethon import TelegramClient, events
+from telethon.sessions import StringSession
 import firebase_admin
 from firebase_admin import credentials, db
 import cloudinary
@@ -13,6 +13,7 @@ load_dotenv()
 
 API_ID = int(os.getenv("API_ID"))
 API_HASH = os.getenv("API_HASH")
+SESSION_STRING = os.getenv("SESSION_STRING")  # 👈 yaha tum apna generated session string env me daaloge
 
 CLOUDINARY_CLOUD_NAME = os.getenv("CLOUDINARY_CLOUD_NAME")
 CLOUDINARY_API_KEY = os.getenv("CLOUDINARY_API_KEY")
@@ -37,41 +38,36 @@ cloudinary.config(
     api_secret=CLOUDINARY_API_SECRET
 )
 
-# Telegram session
-client = TelegramClient("session_name", API_ID, API_HASH)
+# ✅ Telegram client with StringSession
+client = TelegramClient(StringSession(SESSION_STRING), API_ID, API_HASH)
 
 CHANNELS = ["Shopping_deal_offerss"]  # Telegram channel username list
 
 
-async def main():
-    print("🚀 Telegram Fetcher Started...")
+@client.on(events.NewMessage(chats=CHANNELS))
+async def handler(event):
+    text = event.message.message or ""
+    image_url = None
 
-    @client.on(events.NewMessage(chats=CHANNELS))
-    async def handler(event):
-        text = event.message.message or ""
-        image_url = None
+    # Handle images
+    if event.message.photo:
+        file_path = await client.download_media(event.message.photo)
+        upload_result = cloudinary.uploader.upload(file_path)
+        image_url = upload_result.get("secure_url")
+        os.remove(file_path)
 
-        # Handle images
-        if event.message.photo:
-            file_path = await client.download_media(event.message.photo)
-            upload_result = cloudinary.uploader.upload(file_path)
-            image_url = upload_result.get("secure_url")
-            os.remove(file_path)
+    # Save to Firebase
+    ref = db.reference("products")
+    ref.push({
+        "text": text,
+        "image": image_url,
+        "postedAt": str(event.message.date)
+    })
 
-        # Save to Firebase
-        ref = db.reference("products")
-        ref.push({
-            "text": text,
-            "image": image_url,
-            "postedAt": str(event.message.date)
-        })
-
-        print(f"✅ Saved: {text[:30]}... {image_url}")
-
-    await client.start()
-    await client.run_until_disconnected()
+    print(f"✅ Saved: {text[:30]}... {image_url}")
 
 
-if __name__ == "__main__":   # ✅ correct check
-    with client:
-        client.loop.run_until_complete(main())
+if __name__ == "__main__":
+    print("🚀 Telegram Fetcher Started with StringSession...")
+    client.start()  # 👈 no OTP/phone prompt needed now
+    client.run_until_disconnected()
