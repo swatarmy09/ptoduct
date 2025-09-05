@@ -1,14 +1,16 @@
 import os
-import cloudinary
-import cloudinary.uploader
-from telethon import TelegramClient, events
+import json
+import asyncio
+from telethon import TelegramClient
 import firebase_admin
 from firebase_admin import credentials, db
-import json
+import cloudinary
+import cloudinary.uploader
+from dotenv import load_dotenv
 
-# ------------------------------
-# 🔹 Load ENV variables
-# ------------------------------
+# Load environment variables
+load_dotenv()
+
 API_ID = int(os.getenv("API_ID"))
 API_HASH = os.getenv("API_HASH")
 
@@ -17,64 +19,58 @@ CLOUDINARY_API_KEY = os.getenv("CLOUDINARY_API_KEY")
 CLOUDINARY_API_SECRET = os.getenv("CLOUDINARY_API_SECRET")
 
 FIREBASE_DB_URL = os.getenv("FIREBASE_DB_URL")
-FIREBASE_CRED_JSON = os.getenv("FIREBASE_CRED_JSON")  # stored as env var in Render
+FIREBASE_CRED_JSON = os.getenv("FIREBASE_CRED_JSON")
 
-CHANNEL = "Shopping_deal_offerss"
+# Convert FIREBASE_CRED_JSON into dict and fix private_key newlines
+cred_dict = json.loads(FIREBASE_CRED_JSON)
+cred_dict["private_key"] = cred_dict["private_key"].replace("\\n", "\n")
 
-# ------------------------------
-# 🔹 Init Cloudinary
-# ------------------------------
+cred = credentials.Certificate(cred_dict)
+firebase_admin.initialize_app(cred, {
+    "databaseURL": FIREBASE_DB_URL
+})
+
+# Configure Cloudinary
 cloudinary.config(
     cloud_name=CLOUDINARY_CLOUD_NAME,
     api_key=CLOUDINARY_API_KEY,
     api_secret=CLOUDINARY_API_SECRET
 )
 
-# ------------------------------
-# 🔹 Init Firebase
-# ------------------------------
-cred_dict = json.loads(FIREBASE_CRED_JSON)
-cred = credentials.Certificate(cred_dict)
-firebase_admin.initialize_app(cred, {
-    "databaseURL": FIREBASE_DB_URL
-})
+# Telegram session
+client = TelegramClient("session_name", API_ID, API_HASH)
 
-# ------------------------------
-# 🔹 Init Telegram Client
-# ------------------------------
-client = TelegramClient("session", API_ID, API_HASH)
+CHANNELS = ["Shopping_deal_offerss"]  # Telegram channel username list
 
-# ------------------------------
-# 🔹 Helper to save post
-# ------------------------------
-def save_to_firebase(text, img_url, posted_at):
-    ref = db.reference("products")
-    ref.push({
-        "title": text,
-        "image": img_url,
-        "postedAt": str(posted_at)
-    })
-    print("✅ Saved:", text[:30], img_url)
 
-# ------------------------------
-# 🔹 Listen for new posts
-# ------------------------------
-@client.on(events.NewMessage(chats=CHANNEL))
-async def handler(event):
-    text = event.text or ""
-    img_url = ""
+async def main():
+    print("🚀 Telegram Fetcher Started...")
 
-    # agar photo hai → Cloudinary upload
-    if event.photo:
-        file_path = await event.download_media()
-        upload_result = cloudinary.uploader.upload(file_path)
-        img_url = upload_result["secure_url"]
+    @client.on(events.NewMessage(chats=CHANNELS))
+    async def handler(event):
+        text = event.message.message
+        image_url = None
 
-    save_to_firebase(text, img_url, event.date)
+        # Handle images
+        if event.message.photo:
+            file_path = await client.download_media(event.message.photo)
+            upload_result = cloudinary.uploader.upload(file_path)
+            image_url = upload_result.get("secure_url")
+            os.remove(file_path)
 
-# ------------------------------
-# 🔹 Run client
-# ------------------------------
-print("🚀 Telegram Fetcher Started...")
-client.start()
-client.run_until_disconnected()
+        # Save to Firebase
+        ref = db.reference("products")
+        ref.push({
+            "text": text,
+            "image": image_url
+        })
+
+        print(f"✅ Saved: {text[:30]}... {image_url}")
+
+    await client.start()
+    await client.run_until_disconnected()
+
+
+if name == "main":
+    with client:
+        client.loop.run_until_complete(main())
