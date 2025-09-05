@@ -1,7 +1,7 @@
 import os
 import json
 import asyncio
-from telethon import TelegramClient
+from telethon import TelegramClient, events
 import firebase_admin
 from firebase_admin import credentials, db
 import cloudinary
@@ -48,7 +48,7 @@ async def main():
 
     @client.on(events.NewMessage(chats=CHANNELS))
     async def handler(event):
-        text = event.message.message
+        text = event.message.message or ""
         image_url = None
 
         # Handle images
@@ -62,7 +62,8 @@ async def main():
         ref = db.reference("products")
         ref.push({
             "text": text,
-            "image": image_url
+            "image": image_url,
+            "postedAt": str(event.message.date)
         })
 
         print(f"✅ Saved: {text[:30]}... {image_url}")
@@ -71,6 +72,6 @@ async def main():
     await client.run_until_disconnected()
 
 
-if name == "main":
+if __name__ == "__main__":   # ✅ correct check
     with client:
         client.loop.run_until_complete(main())
