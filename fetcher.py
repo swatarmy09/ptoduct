@@ -17,7 +17,7 @@ load_dotenv()
 # --- Telegram API ---
 API_ID = int(os.getenv("API_ID"))
 API_HASH = os.getenv("API_HASH")
-SESSION_STRING = os.getenv("SESSION_STRING")
+SESSION_STRING = os.getenv("SESSION_STRING")  # 👈 Must be set in ENV vars
 
 # --- Cloudinary ---
 CLOUDINARY_CLOUD_NAME = os.getenv("CLOUDINARY_CLOUD_NAME")
@@ -56,19 +56,22 @@ def cleanup_old_products():
     data = ref.get()
 
     if data:
-        now = datetime.datetime.utcnow()
+        now = datetime.datetime.now(datetime.timezone.utc)   # ✅ timezone-aware
         two_days_ago = now - datetime.timedelta(days=2)
 
         for key, item in data.items():
             try:
                 postedAt = item.get("postedAt")
                 if postedAt:
-                    post_time = datetime.datetime.fromisoformat(postedAt.replace("Z", ""))
+                    # postedAt is ISO format (timezone-aware)
+                    post_time = datetime.datetime.fromisoformat(postedAt)
+
                     if post_time < two_days_ago:
                         # Delete Cloudinary image if exists
                         image_url = item.get("image")
                         if image_url:
                             try:
+                                # Extract public_id from URL
                                 public_id = image_url.split("/")[-1].split(".")[0]
                                 cloudinary.uploader.destroy(public_id)
                                 print(f"🗑 Deleted image from Cloudinary: {public_id}")
@@ -102,7 +105,7 @@ async def handler(event):
     ref.push({
         "text": text,
         "image": image_url,
-        "postedAt": event.message.date.isoformat()
+        "postedAt": event.message.date.astimezone(datetime.timezone.utc).isoformat()
     })
 
     print(f"✅ Saved: {text[:50]}... {image_url}")
